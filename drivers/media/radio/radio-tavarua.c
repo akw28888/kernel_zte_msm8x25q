@@ -47,6 +47,7 @@
 #include <linux/platform_device.h>
 #include <linux/workqueue.h>
 #include <linux/slab.h>
+#include <linux/wakelock.h>
 /*
 regional parameters for radio device
 */
@@ -141,6 +142,7 @@ module_param(rds_buf, uint, 0);
 MODULE_PARM_DESC(rds_buf, "RDS buffer entries: *100*");
 /* static variables */
 static struct tavarua_device *private_data;
+static struct wake_lock lock_fm;
 /* forward declerations */
 static int tavarua_disable_interrupts(struct tavarua_device *radio);
 static int tavarua_setup_interrupts(struct tavarua_device *radio,
@@ -681,8 +683,10 @@ static void tavarua_q_event(struct tavarua_device *radio,
 	struct kfifo *data_b = &radio->data_buf[TAVARUA_BUF_EVENTS];
 	unsigned char evt = event;
 	FMDBG("updating event_q with event %x\n", event);
-	if (kfifo_in_locked(data_b, &evt, 1, &radio->buf_lock[TAVARUA_BUF_EVENTS]))
+	if (kfifo_in_locked(data_b, &evt, 1, &radio->buf_lock[TAVARUA_BUF_EVENTS])){
+		wake_lock_timeout(&lock_fm, 0.5*HZ);
 		wake_up_interruptible(&radio->event_queue);
+	}
 }
 
 /*=============================================================================
@@ -4244,6 +4248,9 @@ static int  __init tavarua_probe(struct platform_device *pdev)
 	int retval;
 	int i;
 	FMDBG("%s: probe called\n", __func__);
+
+	wake_lock_init(&lock_fm, WAKE_LOCK_SUSPEND, "FM_lock");
+	
 	/* private data allocation */
 	radio = kzalloc(sizeof(struct tavarua_device), GFP_KERNEL);
 	if (!radio) {
